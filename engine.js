@@ -1,24 +1,26 @@
 /*
  * ticket_war engine
- * 対象サイト上で実行され、指定時刻(対象サーバー時刻基準)にボタンを最速でクリックする。
+ * 対象サイト上で実行され、指定時刻(対象サーバー時刻基準)にボタンを最速で押す。
+ * ボタンは複数ステップ指定できる (例: ①公演一覧で公演を押す → ②次のページで「申込」を押す)。
+ * ページが切り替わっても localStorage で「次は何番目のステップか」を引き継ぐ。
  * 設定 C:
- *   at       : 発火時刻 (epoch ms, サーバー時刻基準)
- *   sel      : CSSセレクタ (空なら text で探す)
- *   text     : ボタンの文字列 (部分一致, "|" 区切りで複数候補・左が優先)
- *   lead     : 何ms早く発火するか (通信遅延の先取り)
- *   sync     : true なら対象サーバーの Date ヘッダで時計合わせ
- *   mode     : "click" = その場でクリック / "reload" = 時刻にリロード→出現したら即クリック
- *   window   : 時刻後、要素を探し続ける最大ms
- *   exclude  : text 検索で除外する語の正規表現 (空なら既定: 方法|について|規約…)
- *   repeat   : クリック回数 (連打)
- *   gap      : 連打間隔ms
- *   retry    : reload モードでボタンが出ない時、再リロードまでの待ちms
- *   maxReload: 再リロードの最大回数
- *   url      : reload モードで開くURL (空なら同じページをリロード)
- *   key      : userscript の状態保存キー
+ *   at       : 発売時刻 (epoch ms, サーバー時刻基準)
+ *   steps    : [{ sel: CSSセレクタ, text: ボタン文字 ("|" 区切りで複数候補・左が優先) }, ...]
+ *   lead     : 何ms早く動くか
+ *   sync     : true ならサイトの Date ヘッダで時計合わせ
+ *   mode     : "reload" = 時刻に再読み込み→ステップ1を押す / "click" = 時刻にその場でステップ1を押す
+ *   window   : 各ステップのボタンを探し続ける最大ms
+ *   exclude  : 文字検索で除外する語の正規表現 (空なら既定: 方法|について|規約…)
+ *   repeat   : 押す回数 / gap: 間隔ms
+ *   retry    : reload モードでステップ1のボタンが出ない時、再読み込みまでの待ちms
+ *   maxReload: 再読み込みの最大回数
+ *   url      : reload モードで開くURL (空なら今のページを再読み込み)
+ *   key      : 状態保存キー (空なら保存しない)
  */
 window.TW_ENGINE = function (C) {
   var now = function () { return performance.timeOrigin + performance.now(); };
+  var steps = C.steps || [{ sel: C.sel, text: C.text }];
+  var W = C.window || 30000;
   var box = document.getElementById("__tw_box");
   if (!box) {
     box = document.createElement("div");
@@ -71,102 +73,122 @@ window.TW_ENGINE = function (C) {
   }
 
   function visible(el) { return el.offsetParent !== null || el.getClientRects().length > 0; }
-  function find() {
-    if (C.sel) {
-      var list = document.querySelectorAll(C.sel);
+  function find(step) {
+    if (step.sel) {
+      var list = document.querySelectorAll(step.sel);
       for (var i = 0; i < list.length; i++) if (visible(list[i]) && !list[i].disabled) return list[i];
       return null;
     }
-    if (C.text) {
-      var words = C.text.split("|").map(function (w) { return w.trim(); }).filter(Boolean);
-      var c = document.querySelectorAll("button,input[type=submit],input[type=button],input[type=image],a,[role=button]");
-      var ng = new RegExp(C.exclude || "方法|について|案内|ガイド|注意|規約|よくある|FAQ|履歴|変更|取消|キャンセル|ログイン|会員|登録|ヘルプ|問い合わせ|終了|発売前|予定");
-      var best = null, bestScore = Infinity;
-      for (var j = 0; j < c.length; j++) {
-        var el = c[j], t = (el.innerText || el.value || el.alt || el.title || "").replace(/\s+/g, "");
-        if (!t || t.length > 12 || ng.test(t) || el.disabled || !visible(el)) continue;
-        for (var w = 0; w < words.length; w++) {
-          if (t.indexOf(words[w]) < 0) continue;
-          // 候補の優先度: 先に書いた語 > 本物のボタン > 短いラベル
-          var score = w * 1000 + (/^(BUTTON|INPUT)$/.test(el.tagName) ? 0 : 100) + t.length;
-          if (score < bestScore) { bestScore = score; best = el; }
-          break;
-        }
+    if (!step.text) return null;
+    var words = step.text.split("|").map(function (w) { return w.trim(); }).filter(Boolean);
+    var c = document.querySelectorAll("button,input[type=submit],input[type=button],input[type=image],a,[role=button]");
+    var ng = new RegExp(C.exclude || "方法|について|案内|ガイド|注意|規約|よくある|FAQ|履歴|変更|取消|キャンセル|ログイン|会員|登録|ヘルプ|問い合わせ|終了|発売前|予定");
+    var best = null, bestScore = Infinity;
+    for (var j = 0; j < c.length; j++) {
+      var el = c[j], t = (el.innerText || el.value || el.alt || el.title || "").replace(/\s+/g, "");
+      if (!t || t.length > 12 || ng.test(t) || el.disabled || !visible(el)) continue;
+      for (var w = 0; w < words.length; w++) {
+        if (t.indexOf(words[w]) < 0) continue;
+        // 候補の優先度: 先に書いた語 > 本物のボタン > 短いラベル
+        var score = w * 1000 + (/^(BUTTON|INPUT)$/.test(el.tagName) ? 0 : 100) + t.length;
+        if (score < bestScore) { bestScore = score; best = el; }
+        break;
       }
-      return best;
     }
-    return null;
-  }
-
-  function hit(el) {
-    var t = now();
-    store("done");
-    for (var k = 0; k < (C.repeat || 1); k++) {
-      (function (k) {
-        var f = function () {
-          try { el.focus && el.focus({ preventScroll: true }); } catch (e) {}
-          el.click();
-        };
-        if (k === 0) f(); else setTimeout(f, k * (C.gap || 30));
-      })(k);
-    }
-    var diff = t + offset - C.at;
-    log("CLICK! " + fmt(t + offset) + " (目標比 " + (diff >= 0 ? "+" : "") + diff.toFixed(1) + "ms)");
-    return diff;
-  }
-
-  function hunt(deadline, cb) {
-    var el = find();
-    if (el) return cb(hit(el));
-    log("ボタン待機中…");
-    var fired = false;
-    var mo = new MutationObserver(function () {
-      if (fired) return;
-      var e = find();
-      if (e) { fired = true; mo.disconnect(); cb(hit(e)); }
-    });
-    mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "class", "style", "hidden"] });
-    (function poll() {
-      if (fired) return;
-      var e = find();
-      if (e) { fired = true; mo.disconnect(); return cb(hit(e)); }
-      if (now() > deadline) { mo.disconnect(); log("時間切れ: ボタンが見つかりません"); return cb(null); }
-      setTimeout(poll, 4);
-    })();
+    return best;
   }
 
   function store(v) { if (!C.key) return; try { v === null ? localStorage.removeItem(C.key) : localStorage.setItem(C.key, v); } catch (e) {} }
   function stored() { if (!C.key) return null; try { return localStorage.getItem(C.key); } catch (e) { return null; } }
+  function reloads(v) { try { if (v === undefined) return Number(localStorage.getItem(C.key + "_n") || 0); localStorage.setItem(C.key + "_n", String(v)); } catch (e) { return 0; } }
+  function navigate() { if (C.url) location.href = C.url; else location.reload(); }
+
+  // ステップ k のボタンを押し、次のステップへ進める
+  function hit(k, el) {
+    var t = now();
+    var last = k + 1 >= steps.length;
+    store(last ? "done" : "s:" + (k + 1)); // 先に保存 (押した直後にページが切り替わるため)
+    for (var r = 0; r < (C.repeat || 1); r++) {
+      (function (r) {
+        var f = function () {
+          try { el.focus && el.focus({ preventScroll: true }); } catch (e) {}
+          el.click();
+        };
+        if (r === 0) f(); else setTimeout(f, r * (C.gap || 30));
+      })(r);
+    }
+    var label = "ステップ" + (k + 1) + " CLICK! " + fmt(t + offset);
+    if (k === 0) { var diff = t + offset - C.at; label += " (目標比 " + (diff >= 0 ? "+" : "") + diff.toFixed(1) + "ms)"; }
+    log(label);
+    return t + offset - C.at;
+  }
+
+  // ボタンが出るまで待つ (MutationObserver + 4ms ポーリング)。見つからなければ cb(null)
+  function hunt(k, deadline, cb) {
+    var el = find(steps[k]);
+    if (el) return cb(hit(k, el));
+    log("ステップ" + (k + 1) + ": ボタン待機中…");
+    var fired = false;
+    var mo = new MutationObserver(function () {
+      if (fired) return;
+      var e = find(steps[k]);
+      if (e) { fired = true; mo.disconnect(); cb(hit(k, e)); }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "class", "style", "hidden"] });
+    (function poll() {
+      if (fired) return;
+      var e = find(steps[k]);
+      if (e) { fired = true; mo.disconnect(); return cb(hit(k, e)); }
+      if (now() > deadline) { mo.disconnect(); return cb(null); }
+      setTimeout(poll, 4);
+    })();
+  }
+
+  // ステップ k から最後まで順に押す (同じページ内で次のボタンが出る場合にも対応)
+  function chain(k, resolve, first) {
+    hunt(k, now() + W, function (r) {
+      if (r === null) { log("ステップ" + (k + 1) + ": ボタンが見つかりません（時間切れ）"); return resolve(first === undefined ? null : first); }
+      if (first === undefined) first = r;
+      if (k + 1 < steps.length) return chain(k + 1, resolve, first);
+      log("全ステップ完了 ✓ ここからは手動で操作してください");
+      resolve(first);
+    });
+  }
 
   return new Promise(function (resolve) {
-    var tick = setInterval(function () {
+    setInterval(function () {
       var r = C.at - (now() + offset);
       clockText = fmt(now() + offset) + (r > 0 ? "  残り " + (r / 1000).toFixed(r < 10000 ? 2 : 0) + "s" : "");
       paint();
     }, 33);
 
-    var W = C.window || 30000, st = stored(), local = now();
-    if (st === "done") { log("クリック済み（このページでは何もしません）"); return resolve(null); }
-    if (C.mode === "reload" && st === String(C.at) && local > C.at - 120000 && local < C.at + W + 120000) {
-      // リロード後: 即座にボタンを狙い、無ければ再リロード
-      log("リロード完了 → ボタン探索");
-      var found = false, retry = C.retry || 1000;
-      hunt(local + retry, function (r) {
-        if (r !== null) { found = true; return resolve(r); }
-        if (now() < C.at + W + 60000 && Number(localStorage.getItem(C.key + "_n") || 0) < (C.maxReload || 20)) {
-          try { localStorage.setItem(C.key + "_n", Number(localStorage.getItem(C.key + "_n") || 0) + 1); } catch (e) {}
-          log("ボタン未出現 → 再リロード");
-          if (C.url) location.href = C.url; else location.reload();
-        } else { store(null); log("諦めました（再リロード上限）"); resolve(null); }
-      });
-      return;
+    var st = stored(), local = now();
+    var inWindow = local > C.at - 120000 && local < C.at + W * steps.length + 120000;
+    if (st === "done") { log("完了済み（このページでは何もしません）"); return resolve(null); }
+    var m = /^s:(\d+)$/.exec(st || "");
+    if (m && inWindow) {
+      var k = +m[1];
+      if (k === 0 && C.mode === "reload") {
+        // 再読み込み後: ステップ1のボタンを狙い、無ければもう一度再読み込み
+        log("再読み込み完了 → ステップ1を探索");
+        return hunt(0, local + (C.retry || 1000), function (r) {
+          if (r !== null) return steps.length > 1 ? chain(1, resolve, r) : (log("全ステップ完了 ✓ ここからは手動で操作してください"), resolve(r));
+          if (now() < C.at + W + 60000 && reloads() < (C.maxReload || 20)) {
+            reloads(reloads() + 1);
+            log("ボタン未出現 → 再読み込み");
+            navigate();
+          } else { store(null); log("諦めました（再読み込み上限）"); resolve(null); }
+        });
+      }
+      log("ステップ" + (k + 1) + " へ");
+      return chain(k, resolve);
     }
 
     (C.sync ? sync() : Promise.resolve(0)).then(function (o) {
       offset = o;
       var fireLocal = C.at - offset - (C.lead || 0);
-      if (fireLocal < now() - W) { log("目標時刻を過ぎています"); return resolve(null); }
-      log("目標 " + fmt(C.at) + " / " + (C.mode === "reload" ? "リロード" : "クリック") + " / 先行 " + (C.lead || 0) + "ms");
+      if (fireLocal < now() - W) { log("発売時刻を過ぎています"); return resolve(null); }
+      log("目標 " + fmt(C.at) + " / " + (C.mode === "reload" ? "再読み込み" : "その場で押す") + " / ボタン" + steps.length + "段階");
 
       // 直前に接続を温める (TCP/TLS keep-alive)
       var warm = fireLocal - 2500 - now();
@@ -175,13 +197,13 @@ window.TW_ENGINE = function (C) {
       function go() {
         while (now() < fireLocal) {} // 最後の数十msはビジーウェイトで精度を出す
         if (C.mode === "reload") {
-          store(String(C.at));
-          try { localStorage.setItem(C.key + "_n", "0"); } catch (e) {}
+          store("s:0");
+          reloads(0);
           log("RELOAD! " + fmt(now() + offset));
-          if (C.url) location.href = C.url; else location.reload();
-          return;
+          return navigate();
         }
-        hunt(now() + W, resolve);
+        store("s:0");
+        chain(0, resolve);
       }
       // 長い待ちは段階的に再スケジュール (タイマーのズレ対策)
       (function arm() {

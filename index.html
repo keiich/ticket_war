@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ticket War Clicker</title>
-<meta name="description" content="指定時刻にボタンをミリ秒精度でクリックするユーザースクリプト/ブックマークレット生成ツール">
+<meta name="description" content="発売時刻ぴったりにチケットサイトのボタンを自動で押す Tampermonkey スクリプトを作るツール">
 <style>
 :root{--bg:#f6f7fb;--card:#fff;--fg:#14161f;--mut:#667;--line:#dde0ea;--acc:#e5352b;--ok:#1a8f4a;--code:#f0f2f7}
 @media (prefers-color-scheme:dark){:root{--bg:#0e1016;--card:#171a23;--fg:#e8eaf2;--mut:#9aa0b4;--line:#2a2f3d;--acc:#ff5a4f;--ok:#43c47a;--code:#10131a}}
@@ -19,86 +19,112 @@ h2{font-size:18px;margin:0 0 12px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:640px){.grid{grid-template-columns:1fr}}
 label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
-input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;min-width:0}
 textarea{font:12px/1.5 ui-monospace,monospace;min-height:140px}
 .full{grid-column:1/-1}
 .hint{font-size:12px;color:var(--mut);margin-top:3px}
 button,.btn{display:inline-block;padding:10px 16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer;text-decoration:none}
 button.sec,.btn.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button.mini{padding:6px 10px;font-size:13px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .bm{padding:10px 16px;border:2px dashed var(--acc);border-radius:8px;color:var(--acc);font-weight:700;text-decoration:none;cursor:grab}
 .clock{font:700 34px ui-monospace,monospace;letter-spacing:1px}
 #demoBtn{background:#888;min-width:180px}
 #demoBtn:not(:disabled){background:var(--ok)}
 #demoOut{font:13px ui-monospace,monospace;white-space:pre-wrap;margin-top:8px}
-ol{padding-left:20px;margin:0}
+ol,ul{padding-left:20px;margin:0}
 li{margin:4px 0}
-code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px;word-break:break-all}
 .warn{border-left:4px solid var(--acc)}
-.answer{border:2px solid var(--ok)}
-.answer h2{color:var(--ok)}
 .step h2{display:flex;align-items:center;gap:10px}
 .num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--acc);color:#fff;font-size:15px;flex:none}
 details summary{cursor:pointer;color:var(--mut);margin-top:12px}
-details.card summary{margin-top:0;color:var(--fg)}
 a{color:var(--acc)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:10px 0;font-size:13px}
+.flow span{background:var(--code);border-radius:6px;padding:4px 8px}
+.flow b{color:var(--acc)}
+.stepRow{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.stepRow .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:700}
 </style>
 </head>
 <body>
 <main>
   <h1>⚡ Ticket War <span>Clicker</span></h1>
-  <p class="sub">発売時刻ぴったりに、チケットサイトの「申込」ボタンを自動で押します。</p>
+  <p class="sub">発売時刻ぴったりに、チケットサイトのボタンを自動で押します。ブラウザ拡張「Tampermonkey」で動かします。PC（Chrome / Edge / Firefox）用です。</p>
 
-  <div class="card answer">
-    <h2>使うのは「Tampermonkey」だけ</h2>
-    <p style="margin:0">無料のブラウザ拡張機能 <b>Tampermonkey</b> を使います。ブックマークは<b>使わなくてOK</b>です。お金はかかりません。<br>
-    <span class="hint">PC（Chrome / Edge / Firefox）で使ってください。スマホでは使えません。</span></p>
+  <div class="card">
+    <h2>しくみ</h2>
+    <p style="margin:0 0 6px">チケットサイトは、最初に開くページ（公演一覧など）に「申込」ボタンがあるとは限りません。そこでこのツールでは、<b>押すボタンを順番に何個でも登録</b>できます。</p>
+    <div class="flow">
+      <span>発売時刻</span>→<span>ページを再読み込み</span>→<span><b>ボタン1</b>（例: 公演の「詳細」）</span>→<span>次のページ</span>→<span><b>ボタン2</b>（例: 「申込」）</span>→<span>…ここから手動</span>
+    </div>
+    <p class="hint" style="margin:0">ページが切り替わっても、スクリプトが「次はボタン何番か」を覚えていて続きを押します。</p>
   </div>
 
   <div class="card step">
     <h2><span class="num">1</span>Tampermonkey を入れる（最初の1回だけ）</h2>
     <ol>
-      <li><a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">tampermonkey.net</a> を開き、自分のブラウザ用の「ストアから入手」→「追加」</li>
+      <li><a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">tampermonkey.net</a> を開き、自分のブラウザ用のストアから追加</li>
       <li><b>Chrome / Edge の場合:</b> 右上のパズル型アイコン → Tampermonkey の「︙」→「拡張機能を管理」→ <b>「ユーザー スクリプトを許可する」をオン</b>（無い場合は、拡張機能ページ右上の「デベロッパー モード」をオン）</li>
     </ol>
     <div class="hint">これをやらないとスクリプトが動きません。</div>
   </div>
 
   <div class="card step">
-    <h2><span class="num">2</span>発売時刻を入れる</h2>
+    <h2><span class="num">2</span>🎯 ボタン調査ツールを用意する</h2>
+    <p style="margin-top:0">下のボタンを<b>ブックマークバーへドラッグ</b>して登録します（ブックマークバーが無ければ Ctrl+Shift+B で表示）。</p>
+    <div class="row"><a class="bm" id="picker" href="#">🎯 ボタン調査</a></div>
+    <p class="hint">チケットサイトでこのブックマークを押してから、調べたいボタンをクリックすると、そのボタンの「CSSセレクタ」（ボタンの住所のようなもの）が表示＆コピーされます。調べている間はボタンを押してもページは移動しません。</p>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">3</span>申込までの流れを調べる</h2>
+    <ol>
+      <li>チケットのページ（例: 公演一覧）を開く</li>
+      <li>申込ページにたどり着くまでに<b>押すボタンを順番にメモ</b>する（例: ①公演の「詳細」→②「申込」）</li>
+      <li>それぞれのページで 🎯 を押し、そのボタンをクリック → 出てきたセレクタを下の設定に貼る</li>
+    </ol>
+    <p class="hint">発売前はまだ「申込」ボタンが無いことが多いです。その場合は、<b>同じサイトで今発売中の別の公演</b>で同じ位置のボタンを調べるか、セレクタの代わりに<b>ボタンの文字</b>（例: 申込）を入れてください。</p>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">4</span>設定する</h2>
     <div class="row" style="margin-bottom:12px">
-      <button id="presetKyodo">キョードー東京の設定を入れる</button>
-      <span class="hint">← まずこれを押す</span>
+      <button class="sec" id="presetKyodo">キョードー東京用の初期値を入れる</button>
     </div>
     <div class="grid">
       <div class="full">
-        <label><b>発売時刻</b>（ここだけ自分で入れる）</label>
+        <label><b>発売時刻</b></label>
         <input id="at" type="datetime-local" step="1">
       </div>
       <div class="full">
-        <label>チケットのページURL</label>
-        <input id="page" placeholder="https://example.com/ticket/12345">
-      </div>
-      <div class="full">
-        <label>押すボタンの文字</label>
-        <input id="text" placeholder="申込|購入">
-        <div class="hint">この文字を含むボタンを押します。「|」区切りで複数候補（左ほど優先）。「申込方法について」などの案内リンクは自動で除外します。</div>
+        <label><b>チケットサイトのURL</b>（どのページのURLでもOK）</label>
+        <input id="page" placeholder="https://tickets.example.com/...">
+        <div class="hint" id="pageHint">このサイト内のすべてのページでスクリプトが動きます。</div>
       </div>
     </div>
+
+    <div style="margin-top:16px">
+      <label><b>押すボタン（上から順に押します）</b></label>
+      <div id="steps"></div>
+      <button class="sec mini" id="addStep">＋ ボタンを追加</button>
+      <p class="hint">各ボタンは「CSSセレクタ」か「ボタンの文字」のどちらかを入れます（両方入れるとセレクタ優先）。文字は部分一致で、「|」区切りで複数候補を書けます（左ほど優先）。「申込方法について」などの案内リンクは自動で除外します。</p>
+    </div>
+
     <details>
       <summary>詳細設定（ふつうは触らなくてOK）</summary>
       <div class="grid" style="margin-top:12px">
         <div>
-          <label>動作</label>
+          <label>発売時刻の動き</label>
           <select id="mode">
-            <option value="reload">時刻にページを再読み込み → ボタンが出たら押す</option>
-            <option value="click">時刻にその場でボタンを押す（再読み込みしない）</option>
+            <option value="reload">ページを再読み込みしてからボタン1を押す</option>
+            <option value="click">再読み込みせず、その場でボタン1を押す</option>
           </select>
-          <div class="hint">キョードー東京は「再読み込み」。</div>
+          <div class="hint">発売時刻にボタンが自動で出てくるサイトなら「その場で」。</div>
         </div>
         <div>
-          <label>ボタンのCSSセレクタ（任意）</label>
-          <input id="sel" placeholder="空でOK（入れると文字より優先）">
+          <label>再読み込み先URL（任意）</label>
+          <input id="url" placeholder="空なら待っているページ">
         </div>
         <div>
           <label>何ms早く動くか</label>
@@ -106,11 +132,7 @@ a{color:var(--acc)}
           <div class="hint">早すぎると「発売前」の画面になるので 0 推奨。</div>
         </div>
         <div>
-          <label>再読み込み先URL（任意）</label>
-          <input id="url" placeholder="空なら同じページ">
-        </div>
-        <div>
-          <label>ボタンが出ない時、再読み込みまでの待ち (ms)</label>
+          <label>ボタン1が出ない時、再読み込みまでの待ち (ms)</label>
           <input id="retry" type="number" value="1000" min="300" step="100">
         </div>
         <div>
@@ -118,12 +140,12 @@ a{color:var(--acc)}
           <input id="maxReload" type="number" value="20" min="0">
         </div>
         <div>
-          <label>押す回数 / 間隔ms</label>
-          <div class="row"><input id="repeat" type="number" value="1" min="1" style="flex:1"><input id="gap" type="number" value="30" min="1" style="flex:1"></div>
+          <label>各ボタンを探し続ける時間 (秒)</label>
+          <input id="win" type="number" value="30" min="1">
         </div>
         <div>
-          <label>ボタンを探し続ける時間 (秒)</label>
-          <input id="win" type="number" value="30" min="1">
+          <label>押す回数 / 間隔ms</label>
+          <div class="row"><input id="repeat" type="number" value="1" min="1" style="flex:1"><input id="gap" type="number" value="30" min="1" style="flex:1"></div>
         </div>
         <div class="full">
           <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--fg)"><input id="sync" type="checkbox" checked style="width:auto"> チケットサイトの時計に合わせる（推奨）</label>
@@ -133,7 +155,7 @@ a{color:var(--acc)}
   </div>
 
   <div class="card step">
-    <h2><span class="num">3</span>スクリプトを Tampermonkey に登録</h2>
+    <h2><span class="num">5</span>スクリプトを Tampermonkey に登録</h2>
     <div class="row" style="margin-bottom:12px">
       <button id="copyUs">スクリプトをコピー</button>
       <span class="hint" id="genMsg"></span>
@@ -142,39 +164,38 @@ a{color:var(--acc)}
       <li>↑「スクリプトをコピー」を押す</li>
       <li>ブラウザ右上の Tampermonkey アイコン →「<b>新規スクリプトを作成</b>」</li>
       <li>最初から書いてある文字を<b>全部消して</b>（Ctrl+A → Delete）、貼り付け（Ctrl+V）</li>
-      <li><b>Ctrl+S</b> で保存。これで登録完了</li>
+      <li><b>Ctrl+S</b> で保存</li>
     </ol>
-    <div class="hint">発売時刻を変えたときは、コピーし直して同じ手順で上書き保存してください。</div>
+    <div class="hint">設定を変えたときは、コピーし直して同じスクリプトに上書き保存してください（古いスクリプトが残っていると二重に動きます）。</div>
     <details>
       <summary>スクリプトの中身を見る</summary>
       <textarea id="us" readonly style="margin-top:8px"></textarea>
-      <a class="btn sec" id="dlUs" download="ticket_war.user.js" style="margin-top:8px">.user.js をダウンロード</a>
-      <button class="sec" id="gen" style="margin-top:8px">作り直す</button>
     </details>
   </div>
 
   <div class="card step">
-    <h2><span class="num">4</span>動いているか確認（前日までに）</h2>
+    <h2><span class="num">6</span>動いているか確認（前日までに）</h2>
     <ol>
-      <li>チケットのページを開く</li>
+      <li>チケットサイトを開く</li>
       <li>画面の<b>右下に黒い箱</b>（⚡ticket_war と時刻・残り時間）が出ていれば成功</li>
-      <li>出ない → 手順1の「ユーザー スクリプトを許可する」を確認</li>
+      <li>出ない → 手順1の「ユーザー スクリプトを許可する」と、手順4のURLを確認</li>
     </ol>
   </div>
 
   <div class="card step">
-    <h2><span class="num">5</span>発売当日</h2>
+    <h2><span class="num">7</span>発売当日</h2>
     <ol>
-      <li><b>発売5分前</b>までに、チケットのページを開く（<b>ログインも済ませておく</b>）</li>
+      <li><b>発売5分前</b>までにログインを済ませ、<b>ボタン1が出てくるページ</b>を開いて待つ</li>
+      <li>チケットサイトのタブは<b>1つだけ</b>にする（複数あると全部が再読み込みします）</li>
       <li>右下の黒い箱に「目標 ○○:○○:00.000」と出ていれば準備OK</li>
       <li><b>そのタブを前に出したまま、何も触らず待つ</b>（別タブに切り替えない・PCをスリープさせない）</li>
-      <li>発売時刻になると、自動で再読み込み → 「申込」ボタンを押します（ボタンが出ていなければ出るまで再読み込み）</li>
-      <li>次の画面（枚数・支払い方法など）からは<b>自分で操作</b>してください</li>
+      <li>発売時刻に再読み込み → ボタン1 → ボタン2 … と自動で押します（ボタン1が出ていなければ出るまで再読み込み）</li>
+      <li>黒い箱に「全ステップ完了」と出たら、そこからは<b>自分で操作</b>（枚数・支払い方法など）</li>
     </ol>
   </div>
 
   <div class="card step">
-    <h2><span class="num">6</span>終わったら</h2>
+    <h2><span class="num">8</span>終わったら</h2>
     <p style="margin:0">Tampermonkey アイコン → このスクリプトのスイッチを<b>オフ</b>（または削除）。</p>
   </div>
 
@@ -201,17 +222,6 @@ a{color:var(--acc)}
       <li>画像認証（CAPTCHA）や順番待ちの待合室は突破しません。</li>
     </ol>
   </div>
-
-  <details class="card">
-    <summary><b>おまけ: ブックマークレット（使わなくてOK）</b></summary>
-    <p class="hint">Tampermonkey を入れられない場合の代わりです。ページの再読み込みができないので、<b>キョードー東京には向きません</b>。<br>
-    使い方: 下のボタンをブックマークバーへドラッグ → チケットのページでそのブックマークを押す（発売30秒以上前に）。</p>
-    <div class="row">
-      <a class="bm" id="bm" href="#">⚡ TicketWar 発射</a>
-      <a class="bm" id="picker" href="#">🎯 セレクタ取得</a>
-    </div>
-    <p class="hint">🎯 セレクタ取得: チケットのページで押してから目的のボタンをクリックすると、そのボタンを指定する文字列がコピーされます（詳細設定の「CSSセレクタ」用）。</p>
-  </details>
 </main>
 
 <script src="engine.js"></script>
@@ -219,23 +229,51 @@ a{color:var(--acc)}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var now = function(){ return performance.timeOrigin + performance.now(); };
-  var FIELDS = ["page","at","lead","sel","text","mode","url","repeat","gap","win","sync","retry","maxReload"];
+  var FIELDS = ["page","at","lead","mode","url","repeat","gap","win","sync","retry","maxReload"];
+  var steps = [{ sel: "", text: "申込|購入|申し込" }];
 
   // 設定をブラウザに記憶
   try {
     var saved = JSON.parse(localStorage.getItem("tw_cfg") || "{}");
     FIELDS.forEach(function(k){ if (saved[k] !== undefined) { if ($(k).type === "checkbox") $(k).checked = saved[k]; else $(k).value = saved[k]; } });
+    if (Array.isArray(saved.steps) && saved.steps.length) steps = saved.steps;
   } catch(e) {}
   function save(){
-    var o = {}; FIELDS.forEach(function(k){ o[k] = $(k).type === "checkbox" ? $(k).checked : $(k).value; });
+    var o = { steps: steps }; FIELDS.forEach(function(k){ o[k] = $(k).type === "checkbox" ? $(k).checked : $(k).value; });
     try { localStorage.setItem("tw_cfg", JSON.stringify(o)); } catch(e) {}
   }
+
+  // ボタン（ステップ）の入力欄
+  function renderSteps(){
+    var box = $("steps"); box.innerHTML = "";
+    steps.forEach(function(s, i){
+      var d = document.createElement("div"); d.className = "stepRow";
+      d.innerHTML =
+        '<div class="head"><span>ボタン' + (i+1) + (i === 0 ? '（発売時刻に最初に押す）' : '') + '</span>' +
+        (steps.length > 1 ? '<button class="sec mini" data-del="' + i + '">削除</button>' : '') + '</div>' +
+        '<div class="grid">' +
+        '<div><label>CSSセレクタ（🎯で調べた値）</label><input data-k="sel" data-i="' + i + '" placeholder="例: #btnApply"></div>' +
+        '<div><label>またはボタンの文字</label><input data-k="text" data-i="' + i + '" placeholder="例: 申込|購入"></div>' +
+        '</div>';
+      box.appendChild(d);
+      d.querySelector('[data-k=sel]').value = s.sel || "";
+      d.querySelector('[data-k=text]').value = s.text || "";
+    });
+  }
+  $("steps").addEventListener("input", function(e){
+    var t = e.target; if (!t.dataset.k) return;
+    steps[+t.dataset.i][t.dataset.k] = t.value.trim(); gen();
+  });
+  $("steps").addEventListener("click", function(e){
+    var i = e.target.dataset.del; if (i === undefined) return;
+    steps.splice(+i, 1); renderSteps(); gen();
+  });
+  $("addStep").onclick = function(){ steps.push({ sel: "", text: "" }); renderSteps(); gen(); };
 
   function cfg(){
     return {
       at: new Date($("at").value).getTime(),
-      sel: $("sel").value.trim(),
-      text: $("text").value.trim(),
+      steps: steps.filter(function(s){ return s.sel || s.text; }).map(function(s){ return { sel: s.sel || "", text: s.text || "" }; }),
       lead: +$("lead").value || 0,
       sync: $("sync").checked,
       mode: $("mode").value,
@@ -250,62 +288,58 @@ a{color:var(--acc)}
 
   var ENGINE = window.TW_ENGINE.toString();
 
-  function matchPattern(u){
-    if (!u) return "*://*/*";
-    try { var x = new URL(u); return x.origin + x.pathname + (u.endsWith("*") ? "" : "*"); } catch(e) { return u; }
-  }
+  // サイト全体で動かす（申込ボタンは最初のページにあるとは限らないため）
+  function origin(u){ try { return new URL(u).origin; } catch(e) { return null; } }
 
   function gen(){
     save();
-    var c = cfg();
+    var c = cfg(), o = origin($("page").value.trim());
+    $("pageHint").textContent = o ? "スクリプトは " + o + " の全ページで動きます。" : "このサイト内のすべてのページでスクリプトが動きます。";
     if (isNaN(c.at)) { $("genMsg").textContent = "⚠ 発売時刻を入れてください"; return false; }
-    if (!$("page").value.trim()) { $("genMsg").textContent = "⚠ チケットのページURLを入れてください"; return false; }
-    if (!c.sel && !c.text) { $("genMsg").textContent = "⚠ 押すボタンの文字を入れてください"; return false; }
-    $("genMsg").textContent = "発売時刻 " + new Date(c.at).toLocaleString("ja-JP") + " 用";
+    if (!o) { $("genMsg").textContent = "⚠ チケットサイトのURLを入れてください"; return false; }
+    if (!c.steps.length) { $("genMsg").textContent = "⚠ 押すボタンを1つ以上入れてください"; return false; }
+    $("genMsg").textContent = new Date(c.at).toLocaleString("ja-JP") + " / ボタン" + c.steps.length + "個";
     c.key = "__tw_" + c.at;
-    var us =
+    $("us").value =
 "// ==UserScript==\n"+
 "// @name         Ticket War Clicker "+new Date(c.at).toLocaleString("ja-JP")+"\n"+
 "// @namespace    ticket_war\n"+
 "// @version      "+Date.now()+"\n"+
-"// @match        "+matchPattern($("page").value.trim())+"\n"+
+"// @match        "+o+"/*\n"+
 "// @run-at       document-start\n"+
 "// @grant        none\n"+
 "// ==/UserScript==\n"+
 "(function(){\n"+
+"  if (window.top !== window.self) return;\n"+
 "  var C = "+JSON.stringify(c)+";\n"+
 "  var run = "+ENGINE+";\n"+
 "  if (document.body) run(C); else document.addEventListener('DOMContentLoaded', function(){ run(C); });\n"+
 "})();\n";
-    $("us").value = us;
-    $("dlUs").href = URL.createObjectURL(new Blob([us], {type:"text/javascript"}));
-    var bc = Object.assign({}, c, {mode:"click", key:""});
-    $("bm").href = "javascript:" + encodeURIComponent("(" + ENGINE + ")(" + JSON.stringify(bc) + ");void 0");
   }
-  $("gen").onclick = gen;
   $("presetKyodo").onclick = function(){
     $("page").value = "https://tickets.kyodotokyo.com/asp/evt/evtlst.aspx?kcd=133740&dmf=1";
     $("mode").value = "reload";
-    $("sel").value = "";
-    $("text").value = "申込|購入|申し込";
-    $("lead").value = 0;
-    $("retry").value = 1000; $("maxReload").value = 20;
-    gen();
-    $("at").focus();
-    $("genMsg").textContent = "";
+    $("lead").value = 0; $("retry").value = 1000; $("maxReload").value = 20;
+    if (!steps.some(function(s){ return s.sel || s.text; })) { steps = [{ sel: "", text: "申込|購入|申し込" }]; renderSteps(); }
+    gen(); $("at").focus();
   };
   FIELDS.forEach(function(k){ $(k).addEventListener("change", gen); });
-  $("copyUs").onclick = function(){ if (gen() === false) return; navigator.clipboard.writeText($("us").value).then(function(){ $("copyUs").textContent = "コピーしました ✓"; setTimeout(function(){ $("copyUs").textContent = "スクリプトをコピー"; }, 1500); }); };
-  $("bm").onclick = $("picker").onclick = function(e){ e.preventDefault(); alert("ブックマークバーへドラッグして使ってください"); };
+  $("copyUs").onclick = function(){
+    if (gen() === false) return;
+    navigator.clipboard.writeText($("us").value).then(function(){
+      $("copyUs").textContent = "コピーしました ✓";
+      setTimeout(function(){ $("copyUs").textContent = "スクリプトをコピー"; }, 1500);
+    });
+  };
 
-  // セレクタ取得ブックマークレット
+  // 🎯 ボタン調査ブックマークレット
   var PICK = function(){
     var last, css = function(el){
       if (el.id && document.querySelectorAll("#"+CSS.escape(el.id)).length === 1) return "#"+CSS.escape(el.id);
       var path = [];
       while (el && el.nodeType === 1 && el !== document.body) {
         var s = el.tagName.toLowerCase();
-        if (el.id) { path.unshift("#"+CSS.escape(el.id)+(path.length?"":"")); break; }
+        if (el.id) { path.unshift("#"+CSS.escape(el.id)); break; }
         var cls = [].slice.call(el.classList).filter(function(c){ return !/\d{3,}|active|hover|focus/.test(c); }).slice(0,2);
         if (cls.length) s += "." + cls.map(CSS.escape).join(".");
         var p = el.parentElement;
@@ -322,12 +356,15 @@ a{color:var(--acc)}
       document.removeEventListener("mouseover", over, true); document.removeEventListener("click", click, true);
       if (last) last.style.outline = last.__o;
       var t = e.target.closest("button,a,input,[role=button]") || e.target, s = css(t);
+      var label = (t.innerText || t.value || t.alt || "").trim().slice(0, 20);
       try { navigator.clipboard.writeText(s); } catch(_) {}
-      prompt("セレクタ（コピー済み）:", s);
+      prompt("ボタン「" + label + "」のCSSセレクタ（コピー済み）:", s);
     };
     document.addEventListener("mouseover", over, true); document.addEventListener("click", click, true);
+    alert("🎯 調べたいボタンをクリックしてください");
   };
   $("picker").href = "javascript:" + encodeURIComponent("(" + PICK.toString() + ")();void 0");
+  $("picker").onclick = function(e){ e.preventDefault(); alert("ブックマークバーへドラッグして登録し、チケットサイトで押してください"); };
 
   // 時計（このサイトとの時差を表示）
   var offset = 0;
@@ -340,7 +377,7 @@ a{color:var(--acc)}
         if (!isNaN(S)) { lo = Math.max(lo, S - t1); hi = Math.min(hi, S + 1000 - t0); }
       }).catch(function(){}).then(function(){
         if (++n < 10) return setTimeout(one, 90 + (n*618)%1000/3);
-        if (lo <= hi) { offset = (lo+hi)/2; $("clockInfo").textContent = "あなたのPCの時計は " + Math.abs(Math.round(offset)) + "ms " + (offset > 0 ? "遅れています" : "進んでいます") + "（誤差±" + Math.round((hi-lo)/2) + "ms）。スクリプトは対象サイトの時計に自動で合わせます。"; }
+        if (lo <= hi) { offset = (lo+hi)/2; $("clockInfo").textContent = "あなたのPCの時計は " + Math.abs(Math.round(offset)) + "ms " + (offset > 0 ? "遅れています" : "進んでいます") + "（誤差±" + Math.round((hi-lo)/2) + "ms）。スクリプトはチケットサイトの時計に自動で合わせます。"; }
         else $("clockInfo").textContent = "同期できませんでした（PCの時計を表示）";
       });
     })();
@@ -359,11 +396,12 @@ a{color:var(--acc)}
     btn.onclick = function(){ var d = now() - T; out.textContent += "ボタンが押された: 目標比 " + (d>=0?"+":"") + d.toFixed(2) + "ms\n"; };
     // 実サイト同様、時刻になったらボタンが有効になる
     setTimeout(function(){ while (now() < T) {} btn.disabled = false; btn.textContent = "今すぐ押せ！"; }, T - Date.now() - 20);
-    window.TW_ENGINE({ at:T, sel:"#demoBtn", lead:0, sync:false, mode:"click", window:5000, repeat:1 }).then(function(){
+    window.TW_ENGINE({ at:T, steps:[{ sel:"#demoBtn" }], lead:0, sync:false, mode:"click", window:5000, repeat:1 }).then(function(){
       setTimeout(function(){ btn.disabled = true; btn.textContent = "まだ押せない"; }, 1500);
     });
   };
 
+  renderSteps();
   gen();
 })();
 </script>
