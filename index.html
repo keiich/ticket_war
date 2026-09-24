@@ -35,105 +35,158 @@ ol{padding-left:20px;margin:0}
 li{margin:4px 0}
 code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
 .warn{border-left:4px solid var(--acc)}
+.answer{border:2px solid var(--ok)}
+.answer h2{color:var(--ok)}
+.step h2{display:flex;align-items:center;gap:10px}
+.num{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--acc);color:#fff;font-size:15px;flex:none}
+details summary{cursor:pointer;color:var(--mut);margin-top:12px}
+details.card summary{margin-top:0;color:var(--fg)}
+a{color:var(--acc)}
 </style>
 </head>
 <body>
 <main>
   <h1>⚡ Ticket War <span>Clicker</span></h1>
-  <p class="sub">指定時刻に、対象サイトのサーバー時計に合わせてミリ秒単位でボタンをクリックします。</p>
+  <p class="sub">発売時刻ぴったりに、チケットサイトの「申込」ボタンを自動で押します。</p>
+
+  <div class="card answer">
+    <h2>使うのは「Tampermonkey」だけ</h2>
+    <p style="margin:0">無料のブラウザ拡張機能 <b>Tampermonkey</b> を使います。ブックマークは<b>使わなくてOK</b>です。お金はかかりません。<br>
+    <span class="hint">PC（Chrome / Edge / Firefox）で使ってください。スマホでは使えません。</span></p>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">1</span>Tampermonkey を入れる（最初の1回だけ）</h2>
+    <ol>
+      <li><a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">tampermonkey.net</a> を開き、自分のブラウザ用の「ストアから入手」→「追加」</li>
+      <li><b>Chrome / Edge の場合:</b> 右上のパズル型アイコン → Tampermonkey の「︙」→「拡張機能を管理」→ <b>「ユーザー スクリプトを許可する」をオン</b>（無い場合は、拡張機能ページ右上の「デベロッパー モード」をオン）</li>
+    </ol>
+    <div class="hint">これをやらないとスクリプトが動きません。</div>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">2</span>発売時刻を入れる</h2>
+    <div class="row" style="margin-bottom:12px">
+      <button id="presetKyodo">キョードー東京の設定を入れる</button>
+      <span class="hint">← まずこれを押す</span>
+    </div>
+    <div class="grid">
+      <div class="full">
+        <label><b>発売時刻</b>（ここだけ自分で入れる）</label>
+        <input id="at" type="datetime-local" step="1">
+      </div>
+      <div class="full">
+        <label>チケットのページURL</label>
+        <input id="page" placeholder="https://example.com/ticket/12345">
+      </div>
+      <div class="full">
+        <label>押すボタンの文字</label>
+        <input id="text" placeholder="申込|購入">
+        <div class="hint">この文字を含むボタンを押します。「|」区切りで複数候補（左ほど優先）。「申込方法について」などの案内リンクは自動で除外します。</div>
+      </div>
+    </div>
+    <details>
+      <summary>詳細設定（ふつうは触らなくてOK）</summary>
+      <div class="grid" style="margin-top:12px">
+        <div>
+          <label>動作</label>
+          <select id="mode">
+            <option value="reload">時刻にページを再読み込み → ボタンが出たら押す</option>
+            <option value="click">時刻にその場でボタンを押す（再読み込みしない）</option>
+          </select>
+          <div class="hint">キョードー東京は「再読み込み」。</div>
+        </div>
+        <div>
+          <label>ボタンのCSSセレクタ（任意）</label>
+          <input id="sel" placeholder="空でOK（入れると文字より優先）">
+        </div>
+        <div>
+          <label>何ms早く動くか</label>
+          <input id="lead" type="number" value="0" step="10">
+          <div class="hint">早すぎると「発売前」の画面になるので 0 推奨。</div>
+        </div>
+        <div>
+          <label>再読み込み先URL（任意）</label>
+          <input id="url" placeholder="空なら同じページ">
+        </div>
+        <div>
+          <label>ボタンが出ない時、再読み込みまでの待ち (ms)</label>
+          <input id="retry" type="number" value="1000" min="300" step="100">
+        </div>
+        <div>
+          <label>再読み込みの最大回数</label>
+          <input id="maxReload" type="number" value="20" min="0">
+        </div>
+        <div>
+          <label>押す回数 / 間隔ms</label>
+          <div class="row"><input id="repeat" type="number" value="1" min="1" style="flex:1"><input id="gap" type="number" value="30" min="1" style="flex:1"></div>
+        </div>
+        <div>
+          <label>ボタンを探し続ける時間 (秒)</label>
+          <input id="win" type="number" value="30" min="1">
+        </div>
+        <div class="full">
+          <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--fg)"><input id="sync" type="checkbox" checked style="width:auto"> チケットサイトの時計に合わせる（推奨）</label>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">3</span>スクリプトを Tampermonkey に登録</h2>
+    <div class="row" style="margin-bottom:12px">
+      <button id="copyUs">スクリプトをコピー</button>
+      <span class="hint" id="genMsg"></span>
+    </div>
+    <ol>
+      <li>↑「スクリプトをコピー」を押す</li>
+      <li>ブラウザ右上の Tampermonkey アイコン →「<b>新規スクリプトを作成</b>」</li>
+      <li>最初から書いてある文字を<b>全部消して</b>（Ctrl+A → Delete）、貼り付け（Ctrl+V）</li>
+      <li><b>Ctrl+S</b> で保存。これで登録完了</li>
+    </ol>
+    <div class="hint">発売時刻を変えたときは、コピーし直して同じ手順で上書き保存してください。</div>
+    <details>
+      <summary>スクリプトの中身を見る</summary>
+      <textarea id="us" readonly style="margin-top:8px"></textarea>
+      <a class="btn sec" id="dlUs" download="ticket_war.user.js" style="margin-top:8px">.user.js をダウンロード</a>
+      <button class="sec" id="gen" style="margin-top:8px">作り直す</button>
+    </details>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">4</span>動いているか確認（前日までに）</h2>
+    <ol>
+      <li>チケットのページを開く</li>
+      <li>画面の<b>右下に黒い箱</b>（⚡ticket_war と時刻・残り時間）が出ていれば成功</li>
+      <li>出ない → 手順1の「ユーザー スクリプトを許可する」を確認</li>
+    </ol>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">5</span>発売当日</h2>
+    <ol>
+      <li><b>発売5分前</b>までに、チケットのページを開く（<b>ログインも済ませておく</b>）</li>
+      <li>右下の黒い箱に「目標 ○○:○○:00.000」と出ていれば準備OK</li>
+      <li><b>そのタブを前に出したまま、何も触らず待つ</b>（別タブに切り替えない・PCをスリープさせない）</li>
+      <li>発売時刻になると、自動で再読み込み → 「申込」ボタンを押します（ボタンが出ていなければ出るまで再読み込み）</li>
+      <li>次の画面（枚数・支払い方法など）からは<b>自分で操作</b>してください</li>
+    </ol>
+  </div>
+
+  <div class="card step">
+    <h2><span class="num">6</span>終わったら</h2>
+    <p style="margin:0">Tampermonkey アイコン → このスクリプトのスイッチを<b>オフ</b>（または削除）。</p>
+  </div>
 
   <div class="card">
-    <h2>現在時刻（サーバー同期）</h2>
+    <h2>現在時刻（このサイトの時計）</h2>
     <div class="clock" id="clock">--:--:--.---</div>
     <div class="hint" id="clockInfo">同期中…</div>
   </div>
 
   <div class="card">
-    <h2>① 設定</h2>
-    <div class="row" style="margin-bottom:12px">
-      <button class="sec" id="presetKyodo">プリセット: キョードー東京</button>
-    </div>
-    <div class="grid">
-      <div class="full">
-        <label>対象ページURL（userscriptが動くページ）</label>
-        <input id="page" placeholder="https://example.com/ticket/12345">
-        <div class="hint">userscriptの @match に使います。末尾に * を付けると配下すべて。</div>
-      </div>
-      <div>
-        <label>発売時刻</label>
-        <input id="at" type="datetime-local" step="1">
-      </div>
-      <div>
-        <label>先行発火 (ms)</label>
-        <input id="lead" type="number" value="0" step="10">
-        <div class="hint">サーバー到着までの遅延を見込んで早めに押す量。0〜100程度。</div>
-      </div>
-      <div>
-        <label>クリック対象 CSSセレクタ</label>
-        <input id="sel" placeholder="#purchase-button">
-        <div class="hint">↓の「セレクタ取得」ブックマークレットで調べられます。</div>
-      </div>
-      <div>
-        <label>またはボタン文字列（部分一致）</label>
-        <input id="text" placeholder="申込|購入">
-        <div class="hint">「|」で複数候補（左ほど優先）。</div>
-      </div>
-      <div>
-        <label>動作モード</label>
-        <select id="mode">
-          <option value="click">時刻にクリック（ボタンが既にある/出現する）</option>
-          <option value="reload">時刻にリロード → 出現した瞬間にクリック</option>
-        </select>
-        <div class="hint">リロードモードは userscript のみ対応。</div>
-      </div>
-      <div>
-        <label>リロード先URL（任意）</label>
-        <input id="url" placeholder="空なら同じページをリロード">
-      </div>
-      <div>
-        <label>クリック回数 / 間隔ms</label>
-        <div class="row"><input id="repeat" type="number" value="1" min="1" style="flex:1"><input id="gap" type="number" value="30" min="1" style="flex:1"></div>
-      </div>
-      <div>
-        <label>ボタン探索の最大時間 (秒)</label>
-        <input id="win" type="number" value="30" min="1">
-      </div>
-      <div>
-        <label>再リロードまでの待ち (ms)</label>
-        <input id="retry" type="number" value="1000" min="300" step="100">
-        <div class="hint">リロード後ボタンが出なければ、この時間後にもう一度リロード。</div>
-      </div>
-      <div>
-        <label>再リロード最大回数</label>
-        <input id="maxReload" type="number" value="20" min="0">
-      </div>
-      <div class="full row">
-        <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--fg)"><input id="sync" type="checkbox" checked style="width:auto"> 対象サーバーの時計に合わせる（推奨）</label>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>② スクリプトを取得</h2>
-    <div class="row" style="margin-bottom:12px">
-      <button id="gen">生成</button>
-      <button class="sec" id="copyUs">userscriptをコピー</button>
-      <a class="btn sec" id="dlUs" download="ticket_war.user.js">.user.js をダウンロード</a>
-    </div>
-    <label>Userscript（Tampermonkey / Violentmonkey 用・推奨）</label>
-    <textarea id="us" readonly></textarea>
-    <div style="margin-top:14px">
-      <label>ブックマークレット（クリックモードのみ）: ブックマークバーへドラッグ</label>
-      <div class="row">
-        <a class="bm" id="bm" href="#">⚡ TicketWar 発射</a>
-        <a class="bm" id="picker" href="#">🎯 セレクタ取得</a>
-      </div>
-      <div class="hint">🎯は対象ページで押して、クリックしたいボタンをクリック → セレクタがコピーされます。</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>③ テスト（このページで精度を確認）</h2>
+    <h2>精度テスト（試しに押してみる）</h2>
+    <p class="hint" style="margin-top:0">5秒後に有効になるボタンを、自動でどれだけ速く押せるか試せます。</p>
     <div class="row">
       <button class="sec" id="demoRun">5秒後にテスト</button>
       <button id="demoBtn" disabled>まだ押せない</button>
@@ -141,26 +194,24 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
     <div id="demoOut"></div>
   </div>
 
-  <div class="card">
-    <h2>使い方</h2>
-    <ol>
-      <li>ブラウザに <b>Tampermonkey</b> を入れる</li>
-      <li>対象ページを開き 🎯 でボタンのセレクタを取得（または文字列を入力）</li>
-      <li>発売時刻などを設定して「生成」→ userscript を Tampermonkey に登録</li>
-      <li>発売数分前に対象ページを開いておく（ログインも済ませる）。右下に時刻とカウントダウンが出れば準備OK</li>
-      <li><b>タブは前面に出したまま</b>にする（裏にあるとタイマーが遅れます）</li>
-      <li>終わったら userscript を無効化</li>
-    </ol>
-  </div>
-
   <div class="card warn">
     <h2>注意</h2>
     <ol>
       <li>自動化ツールの使用を利用規約で禁止しているチケットサイトがあります。事前に規約を確認し、自己責任で使ってください。</li>
-      <li>先行発火を大きくしすぎると「受付前」扱いになる場合があります。</li>
-      <li>CAPTCHAや待合室（キュー）は突破しません。</li>
+      <li>画像認証（CAPTCHA）や順番待ちの待合室は突破しません。</li>
     </ol>
   </div>
+
+  <details class="card">
+    <summary><b>おまけ: ブックマークレット（使わなくてOK）</b></summary>
+    <p class="hint">Tampermonkey を入れられない場合の代わりです。ページの再読み込みができないので、<b>キョードー東京には向きません</b>。<br>
+    使い方: 下のボタンをブックマークバーへドラッグ → チケットのページでそのブックマークを押す（発売30秒以上前に）。</p>
+    <div class="row">
+      <a class="bm" id="bm" href="#">⚡ TicketWar 発射</a>
+      <a class="bm" id="picker" href="#">🎯 セレクタ取得</a>
+    </div>
+    <p class="hint">🎯 セレクタ取得: チケットのページで押してから目的のボタンをクリックすると、そのボタンを指定する文字列がコピーされます（詳細設定の「CSSセレクタ」用）。</p>
+  </details>
 </main>
 
 <script src="engine.js"></script>
@@ -175,11 +226,6 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
     var saved = JSON.parse(localStorage.getItem("tw_cfg") || "{}");
     FIELDS.forEach(function(k){ if (saved[k] !== undefined) { if ($(k).type === "checkbox") $(k).checked = saved[k]; else $(k).value = saved[k]; } });
   } catch(e) {}
-  if (!$("at").value) {
-    var d = new Date(Date.now() + 3600e3); d.setMinutes(0,0,0);
-    var p = function(n){ return String(n).padStart(2,"0"); };
-    $("at").value = d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":00:00";
-  }
   function save(){
     var o = {}; FIELDS.forEach(function(k){ o[k] = $(k).type === "checkbox" ? $(k).checked : $(k).value; });
     try { localStorage.setItem("tw_cfg", JSON.stringify(o)); } catch(e) {}
@@ -212,8 +258,10 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
   function gen(){
     save();
     var c = cfg();
-    if (isNaN(c.at)) { alert("発売時刻を入れてください"); return; }
-    if (!c.sel && !c.text) { alert("セレクタかボタン文字列を入れてください"); return; }
+    if (isNaN(c.at)) { $("genMsg").textContent = "⚠ 発売時刻を入れてください"; return false; }
+    if (!$("page").value.trim()) { $("genMsg").textContent = "⚠ チケットのページURLを入れてください"; return false; }
+    if (!c.sel && !c.text) { $("genMsg").textContent = "⚠ 押すボタンの文字を入れてください"; return false; }
+    $("genMsg").textContent = "発売時刻 " + new Date(c.at).toLocaleString("ja-JP") + " 用";
     c.key = "__tw_" + c.at;
     var us =
 "// ==UserScript==\n"+
@@ -243,10 +291,11 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
     $("lead").value = 0;
     $("retry").value = 1000; $("maxReload").value = 20;
     gen();
-    alert("キョードー東京用の設定を入れました。発売時刻を入力してください。\n可能なら、発売前に同サイトの別公演（発売中のもの）で🎯を使いボタンの文字やセレクタを確認すると確実です。");
+    $("at").focus();
+    $("genMsg").textContent = "";
   };
   FIELDS.forEach(function(k){ $(k).addEventListener("change", gen); });
-  $("copyUs").onclick = function(){ gen(); navigator.clipboard.writeText($("us").value).then(function(){ $("copyUs").textContent = "コピーしました ✓"; setTimeout(function(){ $("copyUs").textContent = "userscriptをコピー"; }, 1500); }); };
+  $("copyUs").onclick = function(){ if (gen() === false) return; navigator.clipboard.writeText($("us").value).then(function(){ $("copyUs").textContent = "コピーしました ✓"; setTimeout(function(){ $("copyUs").textContent = "スクリプトをコピー"; }, 1500); }); };
   $("bm").onclick = $("picker").onclick = function(e){ e.preventDefault(); alert("ブックマークバーへドラッグして使ってください"); };
 
   // セレクタ取得ブックマークレット
