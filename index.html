@@ -50,6 +50,9 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
 
   <div class="card">
     <h2>① 設定</h2>
+    <div class="row" style="margin-bottom:12px">
+      <button class="sec" id="presetKyodo">プリセット: キョードー東京</button>
+    </div>
     <div class="grid">
       <div class="full">
         <label>対象ページURL（userscriptが動くページ）</label>
@@ -72,7 +75,8 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
       </div>
       <div>
         <label>またはボタン文字列（部分一致）</label>
-        <input id="text" placeholder="申し込む">
+        <input id="text" placeholder="申込|購入">
+        <div class="hint">「|」で複数候補（左ほど優先）。</div>
       </div>
       <div>
         <label>動作モード</label>
@@ -93,6 +97,15 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
       <div>
         <label>ボタン探索の最大時間 (秒)</label>
         <input id="win" type="number" value="30" min="1">
+      </div>
+      <div>
+        <label>再リロードまでの待ち (ms)</label>
+        <input id="retry" type="number" value="1000" min="300" step="100">
+        <div class="hint">リロード後ボタンが出なければ、この時間後にもう一度リロード。</div>
+      </div>
+      <div>
+        <label>再リロード最大回数</label>
+        <input id="maxReload" type="number" value="20" min="0">
       </div>
       <div class="full row">
         <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--fg)"><input id="sync" type="checkbox" checked style="width:auto"> 対象サーバーの時計に合わせる（推奨）</label>
@@ -155,7 +168,7 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var now = function(){ return performance.timeOrigin + performance.now(); };
-  var FIELDS = ["page","at","lead","sel","text","mode","url","repeat","gap","win","sync"];
+  var FIELDS = ["page","at","lead","sel","text","mode","url","repeat","gap","win","sync","retry","maxReload"];
 
   // 設定をブラウザに記憶
   try {
@@ -183,7 +196,9 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
       url: $("url").value.trim(),
       window: (+$("win").value || 30) * 1000,
       repeat: Math.max(1, +$("repeat").value || 1),
-      gap: +$("gap").value || 30
+      gap: +$("gap").value || 30,
+      retry: +$("retry").value || 1000,
+      maxReload: +$("maxReload").value || 0
     };
   }
 
@@ -220,6 +235,16 @@ code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
     $("bm").href = "javascript:" + encodeURIComponent("(" + ENGINE + ")(" + JSON.stringify(bc) + ");void 0");
   }
   $("gen").onclick = gen;
+  $("presetKyodo").onclick = function(){
+    $("page").value = "https://tickets.kyodotokyo.com/asp/evt/evtlst.aspx?kcd=133740&dmf=1";
+    $("mode").value = "reload";
+    $("sel").value = "";
+    $("text").value = "申込|購入|申し込";
+    $("lead").value = 0;
+    $("retry").value = 1000; $("maxReload").value = 20;
+    gen();
+    alert("キョードー東京用の設定を入れました。発売時刻を入力してください。\n可能なら、発売前に同サイトの別公演（発売中のもの）で🎯を使いボタンの文字やセレクタを確認すると確実です。");
+  };
   FIELDS.forEach(function(k){ $(k).addEventListener("change", gen); });
   $("copyUs").onclick = function(){ gen(); navigator.clipboard.writeText($("us").value).then(function(){ $("copyUs").textContent = "コピーしました ✓"; setTimeout(function(){ $("copyUs").textContent = "userscriptをコピー"; }, 1500); }); };
   $("bm").onclick = $("picker").onclick = function(e){ e.preventDefault(); alert("ブックマークバーへドラッグして使ってください"); };
