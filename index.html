@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ticket War Clicker</title>
+<meta name="description" content="指定時刻にボタンをミリ秒精度でクリックするユーザースクリプト/ブックマークレット生成ツール">
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--fg:#14161f;--mut:#667;--line:#dde0ea;--acc:#e5352b;--ok:#1a8f4a;--code:#f0f2f7}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1016;--card:#171a23;--fg:#e8eaf2;--mut:#9aa0b4;--line:#2a2f3d;--acc:#ff5a4f;--ok:#43c47a;--code:#10131a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:28px;margin:0 0 4px}
+h1 span{color:var(--acc)}
+h2{font-size:18px;margin:0 0 12px}
+.sub{color:var(--mut);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+textarea{font:12px/1.5 ui-monospace,monospace;min-height:140px}
+.full{grid-column:1/-1}
+.hint{font-size:12px;color:var(--mut);margin-top:3px}
+button,.btn{display:inline-block;padding:10px 16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:600 14px system-ui,sans-serif;cursor:pointer;text-decoration:none}
+button.sec,.btn.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bm{padding:10px 16px;border:2px dashed var(--acc);border-radius:8px;color:var(--acc);font-weight:700;text-decoration:none;cursor:grab}
+.clock{font:700 34px ui-monospace,monospace;letter-spacing:1px}
+#demoBtn{background:#888;min-width:180px}
+#demoBtn:not(:disabled){background:var(--ok)}
+#demoOut{font:13px ui-monospace,monospace;white-space:pre-wrap;margin-top:8px}
+ol{padding-left:20px;margin:0}
+li{margin:4px 0}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:13px}
+.warn{border-left:4px solid var(--acc)}
+</style>
+</head>
+<body>
+<main>
+  <h1>⚡ Ticket War <span>Clicker</span></h1>
+  <p class="sub">指定時刻に、対象サイトのサーバー時計に合わせてミリ秒単位でボタンをクリックします。</p>
+
+  <div class="card">
+    <h2>現在時刻（サーバー同期）</h2>
+    <div class="clock" id="clock">--:--:--.---</div>
+    <div class="hint" id="clockInfo">同期中…</div>
+  </div>
+
+  <div class="card">
+    <h2>① 設定</h2>
+    <div class="grid">
+      <div class="full">
+        <label>対象ページURL（userscriptが動くページ）</label>
+        <input id="page" placeholder="https://example.com/ticket/12345">
+        <div class="hint">userscriptの @match に使います。末尾に * を付けると配下すべて。</div>
+      </div>
+      <div>
+        <label>発売時刻</label>
+        <input id="at" type="datetime-local" step="1">
+      </div>
+      <div>
+        <label>先行発火 (ms)</label>
+        <input id="lead" type="number" value="0" step="10">
+        <div class="hint">サーバー到着までの遅延を見込んで早めに押す量。0〜100程度。</div>
+      </div>
+      <div>
+        <label>クリック対象 CSSセレクタ</label>
+        <input id="sel" placeholder="#purchase-button">
+        <div class="hint">↓の「セレクタ取得」ブックマークレットで調べられます。</div>
+      </div>
+      <div>
+        <label>またはボタン文字列（部分一致）</label>
+        <input id="text" placeholder="申し込む">
+      </div>
+      <div>
+        <label>動作モード</label>
+        <select id="mode">
+          <option value="click">時刻にクリック（ボタンが既にある/出現する）</option>
+          <option value="reload">時刻にリロード → 出現した瞬間にクリック</option>
+        </select>
+        <div class="hint">リロードモードは userscript のみ対応。</div>
+      </div>
+      <div>
+        <label>リロード先URL（任意）</label>
+        <input id="url" placeholder="空なら同じページをリロード">
+      </div>
+      <div>
+        <label>クリック回数 / 間隔ms</label>
+        <div class="row"><input id="repeat" type="number" value="1" min="1" style="flex:1"><input id="gap" type="number" value="30" min="1" style="flex:1"></div>
+      </div>
+      <div>
+        <label>ボタン探索の最大時間 (秒)</label>
+        <input id="win" type="number" value="30" min="1">
+      </div>
+      <div class="full row">
+        <label style="margin:0;display:flex;gap:6px;align-items:center;color:var(--fg)"><input id="sync" type="checkbox" checked style="width:auto"> 対象サーバーの時計に合わせる（推奨）</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② スクリプトを取得</h2>
+    <div class="row" style="margin-bottom:12px">
+      <button id="gen">生成</button>
+      <button class="sec" id="copyUs">userscriptをコピー</button>
+      <a class="btn sec" id="dlUs" download="ticket_war.user.js">.user.js をダウンロード</a>
+    </div>
+    <label>Userscript（Tampermonkey / Violentmonkey 用・推奨）</label>
+    <textarea id="us" readonly></textarea>
+    <div style="margin-top:14px">
+      <label>ブックマークレット（クリックモードのみ）: ブックマークバーへドラッグ</label>
+      <div class="row">
+        <a class="bm" id="bm" href="#">⚡ TicketWar 発射</a>
+        <a class="bm" id="picker" href="#">🎯 セレクタ取得</a>
+      </div>
+      <div class="hint">🎯は対象ページで押して、クリックしたいボタンをクリック → セレクタがコピーされます。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ テスト（このページで精度を確認）</h2>
+    <div class="row">
+      <button class="sec" id="demoRun">5秒後にテスト</button>
+      <button id="demoBtn" disabled>まだ押せない</button>
+    </div>
+    <div id="demoOut"></div>
+  </div>
+
+  <div class="card">
+    <h2>使い方</h2>
+    <ol>
+      <li>ブラウザに <b>Tampermonkey</b> を入れる</li>
+      <li>対象ページを開き 🎯 でボタンのセレクタを取得（または文字列を入力）</li>
+      <li>発売時刻などを設定して「生成」→ userscript を Tampermonkey に登録</li>
+      <li>発売数分前に対象ページを開いておく（ログインも済ませる）。右下に時刻とカウントダウンが出れば準備OK</li>
+      <li><b>タブは前面に出したまま</b>にする（裏にあるとタイマーが遅れます）</li>
+      <li>終わったら userscript を無効化</li>
+    </ol>
+  </div>
+
+  <div class="card warn">
+    <h2>注意</h2>
+    <ol>
+      <li>自動化ツールの使用を利用規約で禁止しているチケットサイトがあります。事前に規約を確認し、自己責任で使ってください。</li>
+      <li>先行発火を大きくしすぎると「受付前」扱いになる場合があります。</li>
+      <li>CAPTCHAや待合室（キュー）は突破しません。</li>
+    </ol>
+  </div>
+</main>
+
+<script src="engine.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var now = function(){ return performance.timeOrigin + performance.now(); };
+  var FIELDS = ["page","at","lead","sel","text","mode","url","repeat","gap","win","sync"];
+
+  // 設定をブラウザに記憶
+  try {
+    var saved = JSON.parse(localStorage.getItem("tw_cfg") || "{}");
+    FIELDS.forEach(function(k){ if (saved[k] !== undefined) { if ($(k).type === "checkbox") $(k).checked = saved[k]; else $(k).value = saved[k]; } });
+  } catch(e) {}
+  if (!$("at").value) {
+    var d = new Date(Date.now() + 3600e3); d.setMinutes(0,0,0);
+    var p = function(n){ return String(n).padStart(2,"0"); };
+    $("at").value = d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":00:00";
+  }
+  function save(){
+    var o = {}; FIELDS.forEach(function(k){ o[k] = $(k).type === "checkbox" ? $(k).checked : $(k).value; });
+    try { localStorage.setItem("tw_cfg", JSON.stringify(o)); } catch(e) {}
+  }
+
+  function cfg(){
+    return {
+      at: new Date($("at").value).getTime(),
+      sel: $("sel").value.trim(),
+      text: $("text").value.trim(),
+      lead: +$("lead").value || 0,
+      sync: $("sync").checked,
+      mode: $("mode").value,
+      url: $("url").value.trim(),
+      window: (+$("win").value || 30) * 1000,
+      repeat: Math.max(1, +$("repeat").value || 1),
+      gap: +$("gap").value || 30
+    };
+  }
+
+  var ENGINE = window.TW_ENGINE.toString();
+
+  function matchPattern(u){
+    if (!u) return "*://*/*";
+    try { var x = new URL(u); return x.origin + x.pathname + (u.endsWith("*") ? "" : "*"); } catch(e) { return u; }
+  }
+
+  function gen(){
+    save();
+    var c = cfg();
+    if (isNaN(c.at)) { alert("発売時刻を入れてください"); return; }
+    if (!c.sel && !c.text) { alert("セレクタかボタン文字列を入れてください"); return; }
+    c.key = "__tw_" + c.at;
+    var us =
+"// ==UserScript==\n"+
+"// @name         Ticket War Clicker "+new Date(c.at).toLocaleString("ja-JP")+"\n"+
+"// @namespace    ticket_war\n"+
+"// @version      "+Date.now()+"\n"+
+"// @match        "+matchPattern($("page").value.trim())+"\n"+
+"// @run-at       document-start\n"+
+"// @grant        none\n"+
+"// ==/UserScript==\n"+
+"(function(){\n"+
+"  var C = "+JSON.stringify(c)+";\n"+
+"  var run = "+ENGINE+";\n"+
+"  if (document.body) run(C); else document.addEventListener('DOMContentLoaded', function(){ run(C); });\n"+
+"})();\n";
+    $("us").value = us;
+    $("dlUs").href = URL.createObjectURL(new Blob([us], {type:"text/javascript"}));
+    var bc = Object.assign({}, c, {mode:"click", key:""});
+    $("bm").href = "javascript:" + encodeURIComponent("(" + ENGINE + ")(" + JSON.stringify(bc) + ");void 0");
+  }
+  $("gen").onclick = gen;
+  FIELDS.forEach(function(k){ $(k).addEventListener("change", gen); });
+  $("copyUs").onclick = function(){ gen(); navigator.clipboard.writeText($("us").value).then(function(){ $("copyUs").textContent = "コピーしました ✓"; setTimeout(function(){ $("copyUs").textContent = "userscriptをコピー"; }, 1500); }); };
+  $("bm").onclick = $("picker").onclick = function(e){ e.preventDefault(); alert("ブックマークバーへドラッグして使ってください"); };
+
+  // セレクタ取得ブックマークレット
+  var PICK = function(){
+    var last, css = function(el){
+      if (el.id && document.querySelectorAll("#"+CSS.escape(el.id)).length === 1) return "#"+CSS.escape(el.id);
+      var path = [];
+      while (el && el.nodeType === 1 && el !== document.body) {
+        var s = el.tagName.toLowerCase();
+        if (el.id) { path.unshift("#"+CSS.escape(el.id)+(path.length?"":"")); break; }
+        var cls = [].slice.call(el.classList).filter(function(c){ return !/\d{3,}|active|hover|focus/.test(c); }).slice(0,2);
+        if (cls.length) s += "." + cls.map(CSS.escape).join(".");
+        var p = el.parentElement;
+        if (p && p.querySelectorAll(":scope > " + s).length > 1) s += ":nth-child(" + ([].indexOf.call(p.children, el) + 1) + ")";
+        path.unshift(s);
+        if (document.querySelectorAll(path.join(" > ")).length === 1) break;
+        el = p;
+      }
+      return path.join(" > ");
+    };
+    var over = function(e){ if (last) last.style.outline = last.__o; last = e.target; last.__o = last.style.outline; last.style.outline = "3px solid #e5352b"; };
+    var click = function(e){
+      e.preventDefault(); e.stopPropagation();
+      document.removeEventListener("mouseover", over, true); document.removeEventListener("click", click, true);
+      if (last) last.style.outline = last.__o;
+      var t = e.target.closest("button,a,input,[role=button]") || e.target, s = css(t);
+      try { navigator.clipboard.writeText(s); } catch(_) {}
+      prompt("セレクタ（コピー済み）:", s);
+    };
+    document.addEventListener("mouseover", over, true); document.addEventListener("click", click, true);
+  };
+  $("picker").href = "javascript:" + encodeURIComponent("(" + PICK.toString() + ")();void 0");
+
+  // 時計（このサイトとの時差を表示）
+  var offset = 0;
+  (function(){
+    var lo=-Infinity, hi=Infinity, n=0;
+    (function one(){
+      var t0 = now();
+      fetch(location.pathname + "?t=" + Math.random(), {method:"HEAD", cache:"no-store"}).then(function(r){
+        var t1 = now(), S = Date.parse(r.headers.get("date"));
+        if (!isNaN(S)) { lo = Math.max(lo, S - t1); hi = Math.min(hi, S + 1000 - t0); }
+      }).catch(function(){}).then(function(){
+        if (++n < 10) return setTimeout(one, 90 + (n*618)%1000/3);
+        if (lo <= hi) { offset = (lo+hi)/2; $("clockInfo").textContent = "あなたのPCの時計は " + Math.abs(Math.round(offset)) + "ms " + (offset > 0 ? "遅れています" : "進んでいます") + "（誤差±" + Math.round((hi-lo)/2) + "ms）。スクリプトは対象サイトの時計に自動で合わせます。"; }
+        else $("clockInfo").textContent = "同期できませんでした（PCの時計を表示）";
+      });
+    })();
+  })();
+  (function tick(){
+    var d = new Date(now() + offset);
+    $("clock").textContent = d.toLocaleTimeString("ja-JP",{hour12:false}) + "." + String(d.getMilliseconds()).padStart(3,"0");
+    requestAnimationFrame(tick);
+  })();
+
+  // デモ
+  $("demoRun").onclick = function(){
+    var btn = $("demoBtn"), out = $("demoOut");
+    var T = Math.ceil((Date.now() + 5000) / 1000) * 1000;
+    btn.disabled = true; btn.textContent = "まだ押せない"; out.textContent = "";
+    btn.onclick = function(){ var d = now() - T; out.textContent += "ボタンが押された: 目標比 " + (d>=0?"+":"") + d.toFixed(2) + "ms\n"; };
+    // 実サイト同様、時刻になったらボタンが有効になる
+    setTimeout(function(){ while (now() < T) {} btn.disabled = false; btn.textContent = "今すぐ押せ！"; }, T - Date.now() - 20);
+    window.TW_ENGINE({ at:T, sel:"#demoBtn", lead:0, sync:false, mode:"click", window:5000, repeat:1 }).then(function(){
+      setTimeout(function(){ btn.disabled = true; btn.textContent = "まだ押せない"; }, 1500);
+    });
+  };
+
+  gen();
+})();
+</script>
+</body>
+</html>
