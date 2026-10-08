@@ -73,20 +73,34 @@ window.TW_ENGINE = function (C) {
   }
 
   function visible(el) { return el.offsetParent !== null || el.getClientRects().length > 0; }
+  // 「受付開始前」などの押せない状態のボタンは押さない
+  var OFF_TEXT = /受付開始前|受付前|発売前|販売前|準備中|COMING\s*SOON/i;
+  var NAV_RE = /マイページ|マイチケ|mypage|ログイン|ログアウト|会員登録|新規登録|お気に入り|購入履歴|申込履歴|ヘルプ|よくある/i;
+  function inactive(el) {
+    if (el.disabled || el.getAttribute("aria-disabled") === "true") return true;
+    if (/(^|[\s_-])(disabled|inactive|is-disabled|is-inactive)([\s_-]|$)/i.test(el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className || "")) return true;
+    if (OFF_TEXT.test(el.innerText || el.value || "")) return true;
+    if (el.tagName === "A") { var h = el.getAttribute("href"); if (h === null || h === "" || h === "#" || /^javascript:\s*(void|;|$)/i.test(h)) return true; }
+    try { if (getComputedStyle(el).pointerEvents === "none") return true; } catch (e) {}
+    return false;
+  }
   function find(step) {
     if (step.sel) {
       var list = document.querySelectorAll(step.sel);
-      for (var i = list.length - 1; i >= 0; i--) if (visible(list[i]) && !list[i].disabled) return list[i];
+      for (var i = list.length - 1; i >= 0; i--) {
+        var lt = (list[i].innerText || list[i].value || "").replace(/\s+/g, "");
+        if (visible(list[i]) && !inactive(list[i]) && !NAV_RE.test(lt)) return list[i];
+      }
       return null;
     }
     if (!step.text) return null;
     var words = step.text.split("|").map(function (w) { return w.trim(); }).filter(Boolean);
     var c = document.querySelectorAll("button,input[type=submit],input[type=button],input[type=image],a,[role=button]");
-    var ng = new RegExp(C.exclude || "方法|について|案内|ガイド|注意|規約|よくある|FAQ|履歴|変更|取消|キャンセル|ログイン|会員|登録|ヘルプ|問い合わせ|終了|発売前|予定");
+    var ng = new RegExp(C.exclude || "方法|について|案内|ガイド|注意|規約|よくある|FAQ|履歴|変更|取消|キャンセル|ログイン|会員|登録|ヘルプ|問い合わせ|終了|発売前|予定|マイページ|マイチケ|mypage|お気に入り");
     var best = null, bestScore = Infinity;
     for (var j = 0; j < c.length; j++) {
       var el = c[j], t = (el.innerText || el.value || el.alt || el.title || "").replace(/\s+/g, "");
-      if (!t || t.length > 12 || ng.test(t) || el.disabled || !visible(el)) continue;
+      if (!t || t.length > 12 || ng.test(t) || !visible(el) || inactive(el)) continue;
       for (var w = 0; w < words.length; w++) {
         if (t.indexOf(words[w]) < 0) continue;
         // 候補の優先度: 先に書いた語 > 本物のボタン > 短いラベル
@@ -114,6 +128,7 @@ window.TW_ENGINE = function (C) {
   var leaving = false;
   addEventListener("beforeunload", function () { leaving = true; });
   addEventListener("pagehide", function () { leaving = true; });
+  var QUEUE_RE = /待合室|待機室|待機列|順番待ち|整理番号|あなたの順番|キュー|queue/i;
   var WAIT_RE = /受付前|発売前|販売前|受付開始前|開始前|準備中|お待ちください|混雑|集中|しばらく|ただいま|Service Unavailable|Too Many|Bad Gateway|Gateway Time/i;
   function navigate() { if (C.url) location.href = C.url; else location.reload(); }
 
@@ -193,6 +208,7 @@ window.TW_ENGINE = function (C) {
         // 再読み込み後: ステップ1のボタンを狙い、無ければもう一度再読み込み
         log("再読み込み完了 → ステップ1を探索");
         return hunt(0, local + (C.retry || 1000), function (r) {
+          if (r === null && QUEUE_RE.test((document.body && document.body.innerText) || "")) { store(null); log("待合室の画面です → 再読み込みせず待機"); return resolve(null); }
           if (r !== null) return steps.length > 1 ? setTimeout(function () { if (!leaving) chain(1, resolve, r); }, 150) : (log("全ステップ完了 ✓ ここからは手動で操作してください"), resolve(r));
           if (now() < C.at + W + 60000 && reloads() < (C.maxReload || 20)) {
             reloads(reloads() + 1);
@@ -209,6 +225,8 @@ window.TW_ENGINE = function (C) {
           return setTimeout(function () { if (!leaving) chain(k + 1, resolve, r); }, 150);
         }
         var body = (document.body && document.body.innerText) || "";
+        // 待合室（順番待ち）の画面では絶対に再読み込みしない
+        if (QUEUE_RE.test(body)) { log("待合室の画面です → 再読み込みせず待機（このタブはそのまま）"); return chain(k, resolve); }
         if (WAIT_RE.test(body) && reloads() < (C.maxReload || 20) && now() < C.at + W * steps.length + 60000) {
           reloads(reloads() + 1);
           log("まだ開いていない画面 → 再読み込み");

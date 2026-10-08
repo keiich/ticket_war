@@ -191,6 +191,7 @@ a{color:var(--acc)}
       <li>右下の黒い箱に「目標 ○○:○○:00.000」と出ていれば準備OK</li>
       <li><b>そのタブを前に出したまま、何も触らず待つ</b>（別タブに切り替えない・PCをスリープさせない）</li>
       <li>発売時刻に再読み込み → ボタン1 → ボタン2 … と自動で押します（ボタン1が出ていなければ出るまで再読み込み）</li>
+      <li><b>待合室（順番待ち）の画面に入ったら、絶対に再読み込みしない</b>（スクリプトも待合室では再読み込みしません）</li>
       <li>黒い箱に「全ステップ完了」と出たら、そこからは<b>自分で操作</b>（枚数・支払い方法など）</li>
     </ol>
   </div>
@@ -330,13 +331,11 @@ a{color:var(--acc)}
   }
   $("presetKyodo").onclick = function(){
     $("page").value = "https://www.kyodotokyo.com/hyper-game-event-final/";
-    if (!$("at").value) $("at").value = "2026-10-08T21:00:00";
+    $("at").value = "2026-10-08T20:45:00"; // 20:45 に待合室がオープン
     $("mode").value = "reload";
-    $("lead").value = 0; $("retry").value = 1000; $("maxReload").value = 20;
-    steps = [
-      { sel: 'a[href*="tickets.kyodotokyo.com"]', text: "" },
-      { sel: "", text: "申込|購入|申し込" }
-    ];
+    $("lead").value = 0; $("retry").value = 1000; $("maxReload").value = 30;
+    var cur = steps[0] && steps[0].sel && steps[0].sel.indexOf("tickets.kyodotokyo.com") < 0 ? steps[0].sel : "";
+    steps = [ { sel: cur || 'a[href*="tickets.kyodotokyo.com"]', text: "" } ];
     renderSteps(); gen();
   };
   FIELDS.forEach(function(k){ $(k).addEventListener("change", gen); });
@@ -356,7 +355,7 @@ a{color:var(--acc)}
       while (el && el.nodeType === 1 && el !== document.body) {
         var s = el.tagName.toLowerCase();
         if (el.id) { path.unshift("#"+CSS.escape(el.id)); break; }
-        var cls = [].slice.call(el.classList).filter(function(c){ return !/\d{3,}|active|hover|focus/.test(c); }).slice(0,2);
+        var cls = [].slice.call(el.classList).filter(function(c){ return !/\d{3,}|active|hover|focus|disabled|inactive|before|coming|soon|off|close|wait/i.test(c); }).slice(0,2);
         if (cls.length) s += "." + cls.map(CSS.escape).join(".");
         var p = el.parentElement;
         if (p && p.querySelectorAll(":scope > " + s).length > 1) s += ":nth-child(" + ([].indexOf.call(p.children, el) + 1) + ")";
