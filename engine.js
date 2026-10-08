@@ -76,7 +76,7 @@ window.TW_ENGINE = function (C) {
   function find(step) {
     if (step.sel) {
       var list = document.querySelectorAll(step.sel);
-      for (var i = 0; i < list.length; i++) if (visible(list[i]) && !list[i].disabled) return list[i];
+      for (var i = list.length - 1; i >= 0; i--) if (visible(list[i]) && !list[i].disabled) return list[i];
       return null;
     }
     if (!step.text) return null;
@@ -98,9 +98,23 @@ window.TW_ENGINE = function (C) {
     return best;
   }
 
-  function store(v) { if (!C.key) return; try { v === null ? localStorage.removeItem(C.key) : localStorage.setItem(C.key, v); } catch (e) {} }
-  function stored() { if (!C.key) return null; try { return localStorage.getItem(C.key); } catch (e) { return null; } }
-  function reloads(v) { try { if (v === undefined) return Number(localStorage.getItem(C.key + "_n") || 0); localStorage.setItem(C.key + "_n", String(v)); } catch (e) { return 0; } }
+  // 状態保存: Tampermonkey の GM_* があればそれを使う (サブドメインをまたいで共有できる)
+  var gm = typeof GM_getValue === "function" && typeof GM_setValue === "function";
+  function sget(k) { try { return gm ? GM_getValue(k, null) : localStorage.getItem(k); } catch (e) { return null; } }
+  function sset(k, v) {
+    try {
+      if (gm) { if (v === null && typeof GM_deleteValue === "function") GM_deleteValue(k); else GM_setValue(k, v); }
+      else if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v);
+    } catch (e) {}
+  }
+  function store(v) { if (C.key) sset(C.key, v); }
+  function stored() { return C.key ? sget(C.key) : null; }
+  function reloads(v) { if (v === undefined) return Number(sget(C.key + "_n") || 0); sset(C.key + "_n", String(v)); }
+  // ページ移動が始まったら、古いページでは次のボタンを探さない
+  var leaving = false;
+  addEventListener("beforeunload", function () { leaving = true; });
+  addEventListener("pagehide", function () { leaving = true; });
+  var WAIT_RE = /受付前|発売前|販売前|受付開始前|開始前|準備中|お待ちください|混雑|集中|しばらく|ただいま|Service Unavailable|Too Many|Bad Gateway|Gateway Time/i;
   function navigate() { if (C.url) location.href = C.url; else location.reload(); }
 
   // ステップ k のボタンを押し、次のステップへ進める
@@ -111,6 +125,10 @@ window.TW_ENGINE = function (C) {
     for (var r = 0; r < (C.repeat || 1); r++) {
       (function (r) {
         var f = function () {
+          if (el.tagName === "A" && el.target && el.target !== "_self" && /^https?:/i.test(el.href)) {
+            if (r === 0) { leaving = true; location.href = el.href; } // 別タブで開くリンクは同じタブで開く (ポップアップブロック対策)
+            return;
+          }
           try { el.focus && el.focus({ preventScroll: true }); } catch (e) {}
           el.click();
         };
@@ -125,18 +143,20 @@ window.TW_ENGINE = function (C) {
 
   // ボタンが出るまで待つ (MutationObserver + 4ms ポーリング)。見つからなければ cb(null)
   function hunt(k, deadline, cb) {
+    if (leaving) return;
     var el = find(steps[k]);
     if (el) return cb(hit(k, el));
     log("ステップ" + (k + 1) + ": ボタン待機中…");
     var fired = false;
     var mo = new MutationObserver(function () {
-      if (fired) return;
+      if (fired || leaving) return;
       var e = find(steps[k]);
       if (e) { fired = true; mo.disconnect(); cb(hit(k, e)); }
     });
     mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled", "class", "style", "hidden"] });
     (function poll() {
       if (fired) return;
+      if (leaving) { mo.disconnect(); return; }
       var e = find(steps[k]);
       if (e) { fired = true; mo.disconnect(); return cb(hit(k, e)); }
       if (now() > deadline) { mo.disconnect(); return cb(null); }
@@ -149,7 +169,8 @@ window.TW_ENGINE = function (C) {
     hunt(k, now() + W, function (r) {
       if (r === null) { log("ステップ" + (k + 1) + ": ボタンが見つかりません（時間切れ）"); return resolve(first === undefined ? null : first); }
       if (first === undefined) first = r;
-      if (k + 1 < steps.length) return chain(k + 1, resolve, first);
+      // 押した直後はページ移動が始まるか少し待つ。移動するなら続きは次のページで
+      if (k + 1 < steps.length) return setTimeout(function () { if (!leaving) chain(k + 1, resolve, first); }, 150);
       log("全ステップ完了 ✓ ここからは手動で操作してください");
       resolve(first);
     });
@@ -172,7 +193,7 @@ window.TW_ENGINE = function (C) {
         // 再読み込み後: ステップ1のボタンを狙い、無ければもう一度再読み込み
         log("再読み込み完了 → ステップ1を探索");
         return hunt(0, local + (C.retry || 1000), function (r) {
-          if (r !== null) return steps.length > 1 ? chain(1, resolve, r) : (log("全ステップ完了 ✓ ここからは手動で操作してください"), resolve(r));
+          if (r !== null) return steps.length > 1 ? setTimeout(function () { if (!leaving) chain(1, resolve, r); }, 150) : (log("全ステップ完了 ✓ ここからは手動で操作してください"), resolve(r));
           if (now() < C.at + W + 60000 && reloads() < (C.maxReload || 20)) {
             reloads(reloads() + 1);
             log("ボタン未出現 → 再読み込み");
@@ -180,8 +201,22 @@ window.TW_ENGINE = function (C) {
           } else { store(null); log("諦めました（再読み込み上限）"); resolve(null); }
         });
       }
+      // ステップ2以降: ボタンが無く「受付前」「混雑」などの画面なら再読み込みして待つ
       log("ステップ" + (k + 1) + " へ");
-      return chain(k, resolve);
+      return hunt(k, local + (C.retry || 1000), function (r) {
+        if (r !== null) {
+          if (k + 1 >= steps.length) { log("全ステップ完了 ✓ ここからは手動で操作してください"); return resolve(r); }
+          return setTimeout(function () { if (!leaving) chain(k + 1, resolve, r); }, 150);
+        }
+        var body = (document.body && document.body.innerText) || "";
+        if (WAIT_RE.test(body) && reloads() < (C.maxReload || 20) && now() < C.at + W * steps.length + 60000) {
+          reloads(reloads() + 1);
+          log("まだ開いていない画面 → 再読み込み");
+          location.href = location.href; // GET で開き直す (フォーム再送信の確認を出さない)
+          return;
+        }
+        chain(k, resolve);
+      });
     }
 
     (C.sync ? sync() : Promise.resolve(0)).then(function (o) {

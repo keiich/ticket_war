@@ -90,7 +90,7 @@ a{color:var(--acc)}
   <div class="card step">
     <h2><span class="num">4</span>設定する</h2>
     <div class="row" style="margin-bottom:12px">
-      <button class="sec" id="presetKyodo">キョードー東京用の初期値を入れる</button>
+      <button class="sec" id="presetKyodo">ハイパーゲーム大会FINAL（キョードー東京）の設定を入れる</button>
     </div>
     <div class="grid">
       <div class="full">
@@ -108,7 +108,8 @@ a{color:var(--acc)}
       <label><b>押すボタン（上から順に押します）</b></label>
       <div id="steps"></div>
       <button class="sec mini" id="addStep">＋ ボタンを追加</button>
-      <p class="hint">各ボタンは「CSSセレクタ」か「ボタンの文字」のどちらかを入れます（両方入れるとセレクタ優先）。文字は部分一致で、「|」区切りで複数候補を書けます（左ほど優先）。「申込方法について」などの案内リンクは自動で除外します。</p>
+      <p class="hint">各ボタンは「CSSセレクタ」か「ボタンの文字」のどちらかを入れます（両方入れるとセレクタ優先）。文字は部分一致で、「|」区切りで複数候補を書けます（左ほど優先）。「申込方法について」などの案内リンクは自動で除外します。<br>
+      <b>⚠ 同じページに「申込」ボタンが複数ある場合（DAY1 / DAY2 / 席種ごとなど）、文字指定だと一番上のボタンを押します。</b>狙いの日・席があるなら、🎯でそのボタンのCSSセレクタを取って入れてください。</p>
     </div>
 
     <details>
@@ -290,11 +291,19 @@ a{color:var(--acc)}
 
   // サイト全体で動かす（申込ボタンは最初のページにあるとは限らないため）
   function origin(u){ try { return new URL(u).origin; } catch(e) { return null; } }
+  // www.example.com と tickets.example.com のようにサブドメインをまたぐサイトがあるので、ドメイン全体で動かす
+  function baseHost(u){
+    var h = new URL(u).hostname, parts = h.split(".");
+    if (/^\d+$/.test(parts[parts.length-1]) || parts.length <= 2) return h;
+    var n = (/^(co|ne|or|ac|go|ed|lg|gr)$/.test(parts[parts.length-2]) && parts[parts.length-1].length === 2) ? 3 : 2;
+    return parts.slice(-n).join(".");
+  }
 
   function gen(){
     save();
     var c = cfg(), o = origin($("page").value.trim());
-    $("pageHint").textContent = o ? "スクリプトは " + o + " の全ページで動きます。" : "このサイト内のすべてのページでスクリプトが動きます。";
+    var bh = o ? baseHost(o) : null;
+    $("pageHint").textContent = o ? "スクリプトは " + bh + " 配下（サブドメイン含む）の全ページで動きます。" : "このサイト内のすべてのページでスクリプトが動きます。";
     if (isNaN(c.at)) { $("genMsg").textContent = "⚠ 発売時刻を入れてください"; return false; }
     if (!o) { $("genMsg").textContent = "⚠ チケットサイトのURLを入れてください"; return false; }
     if (!c.steps.length) { $("genMsg").textContent = "⚠ 押すボタンを1つ以上入れてください"; return false; }
@@ -305,9 +314,12 @@ a{color:var(--acc)}
 "// @name         Ticket War Clicker "+new Date(c.at).toLocaleString("ja-JP")+"\n"+
 "// @namespace    ticket_war\n"+
 "// @version      "+Date.now()+"\n"+
-"// @match        "+o+"/*\n"+
+"// @match        *://"+bh+"/*\n"+
+"// @match        *://*."+bh+"/*\n"+
 "// @run-at       document-start\n"+
-"// @grant        none\n"+
+"// @grant        GM_getValue\n"+
+"// @grant        GM_setValue\n"+
+"// @grant        GM_deleteValue\n"+
 "// ==/UserScript==\n"+
 "(function(){\n"+
 "  if (window.top !== window.self) return;\n"+
@@ -317,11 +329,15 @@ a{color:var(--acc)}
 "})();\n";
   }
   $("presetKyodo").onclick = function(){
-    $("page").value = "https://tickets.kyodotokyo.com/asp/evt/evtlst.aspx?kcd=133740&dmf=1";
+    $("page").value = "https://www.kyodotokyo.com/hyper-game-event-final/";
+    if (!$("at").value) $("at").value = "2026-10-08T21:00:00";
     $("mode").value = "reload";
     $("lead").value = 0; $("retry").value = 1000; $("maxReload").value = 20;
-    if (!steps.some(function(s){ return s.sel || s.text; })) { steps = [{ sel: "", text: "申込|購入|申し込" }]; renderSteps(); }
-    gen(); $("at").focus();
+    steps = [
+      { sel: 'a[href*="tickets.kyodotokyo.com"]', text: "" },
+      { sel: "", text: "申込|購入|申し込" }
+    ];
+    renderSteps(); gen();
   };
   FIELDS.forEach(function(k){ $(k).addEventListener("change", gen); });
   $("copyUs").onclick = function(){
